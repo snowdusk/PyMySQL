@@ -9,5 +9,5 @@ def byte2int(b):
 
 
 def int2byte(i):
-    return struct.pack("!B", i)
+    return struct.pack("!B", i)  # !网络字节序
 

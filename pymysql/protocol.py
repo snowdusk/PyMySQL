@@ -46,6 +46,7 @@ def dump_packet(data):  # pragma: no cover
     print()
 
 
+# 实例表示mysql响应数据包
 class MysqlPacket(object):
     """Representation of a MySQL response packet.
 
@@ -83,7 +84,7 @@ class MysqlPacket(object):
         self._position = None  # ensure no subsequent read()
         return result
 
-    def advance(self, length):
+    def advance(self, length):  # 往前重置待读取索引
         """Advance the cursor in data buffer 'length' bytes."""
         new_position = self._position + length
         if new_position < 0 or new_position > len(self._data):
@@ -91,7 +92,7 @@ class MysqlPacket(object):
                             'Position=%s' % (length, new_position))
         self._position = new_position
 
-    def rewind(self, position=0):
+    def rewind(self, position=0):  # 重置待读取的索引
         """Set the position of the data buffer cursor to 'position'."""
         if position < 0 or position > len(self._data):
             raise Exception("Invalid position to rewind cursor to: %s." % position)
@@ -208,14 +209,14 @@ class MysqlPacket(object):
     def is_load_local_packet(self):
         return self._data[0:1] == b'\xfb'
 
-    def is_error_packet(self):
+    def is_error_packet(self):  # 第一个字节为ff表示error响应
         return self._data[0:1] == b'\xff'
 
     def check_error(self):
         if self.is_error_packet():
             self.rewind()
-            self.advance(1)  # field_count == error (we already know that)
-            errno = self.read_uint16()
+            self.advance(1)  # field_count == error (we already know that)  # 已经读取一个字节
+            errno = self.read_uint16()  # 第2个和第3个字节为错误编号（小端序）
             if DEBUG: print("errno =", errno)
             err.raise_mysql_exception(self._data)
 

@@ -94,16 +94,16 @@ _map_error(OperationalError, ER.DBACCESS_DENIED_ERROR, ER.ACCESS_DENIED_ERROR,
            ER.COLUMNACCESS_DENIED_ERROR, ER.CONSTRAINT_FAILED, ER.LOCK_DEADLOCK)
 
 
-del _map_error, ER
+del _map_error, ER  # 删除函数和导入
 
 
 def raise_mysql_exception(data):
-    errno = struct.unpack('<h', data[1:3])[0]
-    is_41 = data[3:4] == b"#"
+    errno = struct.unpack('<h', data[1:3])[0]  # 小端序，第2个字节和第3个字节表示错误编号
+    is_41 = data[3:4] == b"#"  # 4.1及之后版本第4个字节恒为#
     if is_41:
         # client protocol 4.1
-        errval = data[9:].decode('utf-8', 'replace')
+        errval = data[9:].decode('utf-8', 'replace')  # 4.1及之后版本，错误消息是第9个字节之后的
     else:
-        errval = data[3:].decode('utf-8', 'replace')
+        errval = data[3:].decode('utf-8', 'replace')  # 4.1之前，错误消息是第3个字节之后的
     errorclass = error_map.get(errno, InternalError)
     raise errorclass(errno, errval)

@@ -113,6 +113,7 @@ def lenenc_int(i):
         raise ValueError("Encoding %x is larger than %x - no representation in LengthEncodedInteger" % (i, (1 << 64)))
 
 
+# 每个实例表示一条对mysql server的socket连接
 class Connection(object):
     """
     Representation of a socket with a mysql server.
@@ -583,7 +584,7 @@ class Connection(object):
                                 **kwargs)
                             break
                         except (OSError, IOError) as e:
-                            if e.errno == errno.EINTR:
+                            if e.errno == errno.EINTR:  # Interrupted function call
                                 continue
                             raise
                     self.host_info = "socket %s:%d" % (self.host, self.port)
@@ -634,6 +635,7 @@ class Connection(object):
             # So just reraise it.
             raise
 
+    # 将一个mysql packet写到socket连接
     def write_packet(self, payload):
         """Writes an entire "mysql packet" in its entirety to the network
         addings its length and sequence number.
@@ -643,8 +645,9 @@ class Connection(object):
         data = pack_int24(len(payload)) + int2byte(self._next_seq_id) + payload
         if DEBUG: dump_packet(data)
         self._write_bytes(data)
-        self._next_seq_id = (self._next_seq_id + 1) % 256
+        self._next_seq_id = (self._next_seq_id + 1) % 256  # 序号加1
 
+    # 从socket连接中读取一个完整的mysql packet（数据包），返回表示结果的MysqlPacket实例
     def _read_packet(self, packet_type=MysqlPacket):
         """Read an entire "mysql packet" in its entirety from the network
         and return a MysqlPacket type that represents the results.
@@ -654,13 +657,14 @@ class Connection(object):
         """
         buff = b''
         while True:
-            packet_header = self._read_bytes(4)
+            packet_header = self._read_bytes(4)  # 读取前4个字节（mysql协议前4个字节为header，前3个字节表示消息body长度，第4个字节为序号）
             #if DEBUG: dump_packet(packet_header)
 
+            # mysql协议是小端序，按照小端序（<）进行拆包，H表示2个字节，B表示一个字节
             btrl, btrh, packet_number = struct.unpack('<HBB', packet_header)
-            bytes_to_read = btrl + (btrh << 16)
-            if packet_number != self._next_seq_id:
-                self._force_close()
+            bytes_to_read = btrl + (btrh << 16)  # 小端序，表示body长度
+            if packet_number != self._next_seq_id:  # 序号保证消息顺序的正确性
+                self._force_close()  # 不发送QUIT消息，直接关闭连接
                 if packet_number == 0:
                     # MariaDB sends error packet with seqno==0 when shutdown
                     raise err.OperationalError(
@@ -669,21 +673,22 @@ class Connection(object):
                 raise err.InternalError(
                     "Packet sequence number wrong - got %d expected %d"
                     % (packet_number, self._next_seq_id))
-            self._next_seq_id = (self._next_seq_id + 1) % 256
+            self._next_seq_id = (self._next_seq_id + 1) % 256  # 期待下一次的回包序号加1
 
-            recv_data = self._read_bytes(bytes_to_read)
+            recv_data = self._read_bytes(bytes_to_read)  # 读取body
             if DEBUG: dump_packet(recv_data)
             buff += recv_data
             # https://dev.mysql.com/doc/internals/en/sending-more-than-16mbyte.html
-            if bytes_to_read == 0xffffff:
+            if bytes_to_read == 0xffffff:  # body的长度小于0xffffff，表示请求完成
                 continue
             if bytes_to_read < MAX_PACKET_LEN:
                 break
 
-        packet = packet_type(buff, self.encoding)
-        packet.check_error()
+        packet = packet_type(buff, self.encoding)  # 将回包封装成MysqlPacket实例
+        packet.check_error()  # 检查mysql packet是否正常
         return packet
 
+    # 从连接中读取指定数量的数据
     def _read_bytes(self, num_bytes):
         self._sock.settimeout(self._read_timeout)
         while True:
@@ -1048,18 +1053,19 @@ class Connection(object):
     NotSupportedError = err.NotSupportedError
 
 
+# 每个实例表示每个sql的执行结果
 class MySQLResult(object):
 
     def __init__(self, connection):
         """
         :type connection: Connection
         """
-        self.connection = connection
-        self.affected_rows = None
-        self.insert_id = None
-        self.server_status = None
-        self.warning_count = 0
-        self.message = None
+        self.connection = connection  # 连接
+        self.affected_rows = None  # 影响的行数
+        self.insert_id = None  # 插入id
+        self.server_status = None  # 服务器状态
+        self.warning_count = 0  # 警告行数
+        self.message = None  #
         self.field_count = 0
         self.description = None
         self.rows = None
@@ -1072,7 +1078,7 @@ class MySQLResult(object):
 
     def read(self):
         try:
-            first_packet = self.connection._read_packet()
+            first_packet = self.connection._read_packet()  # 从连接中读取mysql server返回的数据包
 
             if first_packet.is_ok_packet():
                 self._read_ok_packet(first_packet)
